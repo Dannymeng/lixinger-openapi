@@ -13,7 +13,7 @@ def get_version() -> str:
     """
     获取 _version.py 文件里的版本号
     """
-    version_file: Path = Path(__file__) / "lixinger_openapi" / "_version.py"
+    version_file: Path = Path(__file__).parent / "lixinger_openapi" / "_version.py"
     assert version_file is not None, "版本文件不存在"
     spec = importlib.util.spec_from_file_location("_version", version_file)
     if spec is None or spec.loader is None:
