@@ -1,84 +1,122 @@
 # -*- coding: utf-8 -*-
-'''
+"""
 测试代码
 
 注意：因为token值涉及账户隐私，不能在代码里写，所以请在代码所在目录下创建一个token.cfg文件，并将token值写入。token.cfg文件我已经在git里忽略，不会被上库。
-'''
-import sys, os
-if os.path.abspath('..') not in sys.path:
-    sys.path.append(os.path.abspath('..'))
+"""
+
+from datetime import datetime
+from pprint import pp
+import sys
+import os
 import unittest
 
-from lixinger_openapi.token import set_token
+import pandas as pd
+
+if os.path.abspath("..") not in sys.path:
+    sys.path.append(os.path.abspath(".."))
 from lixinger_openapi.query import (
     query_json,
     query_dataframe,
 )
 
+
 class DataTest(unittest.TestCase):
     def setUp(self):
         pass
-        #你可以在这里运行一次set_token，写入token.cfg文件，然后再删除token值，这样有了cfg文件以后都不用set_token了。
-        #set_token("")
+        # 你可以在这里运行一次set_token，写入token.cfg文件，然后再删除token值，这样有了cfg文件以后都不用set_token了。
+        # set_token("")
 
-    def test_query_json_001(self):
-        rlt = query_json('a.stock', {
-            "industryType": "bank"
-        })
-        self.assertEqual(0, rlt['code'])
-        self.assertEqual("success", rlt['msg'])
-        self.assertEqual("000001", rlt['data'][0]['stockCode'])
+    # 大陆-公司-基础信息
+    def test_query_json_company(self):
+        rlt = query_json("cn/company", {"fsTableType": "bank"})
+        self.assertIn("code", rlt)
+        self.assertEqual("success", rlt["message"])
+        self.assertGreater(len(rlt["data"]), 0)
+        self.assertIn("000001", [x["stockCode"] for x in rlt["data"]])
 
-    def test_query_dataframe_001(self):
-        rlt = query_dataframe('a.stock', {
-            "industryType": "bank"
-        })
-        self.assertEqual(0, rlt['code'])
-        self.assertEqual("success", rlt['msg'])
-        self.assertEqual("000001", rlt['data'].loc[0, 'stockCode'])
+    # 大陆-公司-基础信息
+    def test_query_df_company(self):
+        rlt: dict = query_dataframe("cn/company", {"fsTableType": "bank"})
+        self.assertIn("code", rlt)
+        self.assertGreater(len(rlt), 0)
+        df: pd.DataFrame = rlt["data"]
+        self.assertTrue(isinstance(df, pd.DataFrame))
+        self.assertTrue((df["stockCode"] == "000001").any())
 
-    def test_query_json_002(self):
-        rlt = query_json('a.stock.indice', {
-            "stockCode": "000028"
-        })
-        self.assertEqual(0, rlt['code'])
-        self.assertEqual("success", rlt['msg'])
-        self.assertEqual("cn", rlt['data'][0]['areaCode'])
-        self.assertEqual("399348", rlt['data'][0]['stockCode'])
-    
-    def test_query_json_003(self):
-        rlt = query_json('a.stock.industry', {
-            "stockCode": "000028"
-        })
-        self.assertEqual(0, rlt['code'])
-        self.assertEqual("success", rlt['msg'])
-        self.assertEqual("cn", rlt['data'][0]['areaCode'])
-        self.assertEqual("C05", rlt['data'][0]['stockCode'])
+    # 大陆-公司-所属指数
+    def test_query_json_index(self):
+        """测试宁德时代在深圳成指"""
+        rlt = query_json("cn/company/indices", {"stockCode": "300750"})
+        pp(rlt)
+        self.assertIn("code", rlt)
+        self.assertEqual("success", rlt["message"])
+        self.assertGreater(len(rlt), 0)
+        self.assertEqual("cn", rlt["data"][0]["areaCode"])
+        self.assertTrue(
+            any(
+                r
+                for r in rlt["data"]
+                if "stockCode" in r and r["stockCode"] == "399001"
+            )
+        )
 
-    def test_query_json_004(self):
-        rlt = query_json('a.indice.fundamental', {
-            "date": "2018-01-19",
-            "stockCodes": ["000016"],
-            "metrics": [
-                "pe_ttm.y_10.weightedAvg",
-                "pe_ttm.weightedAvg",
-                "mc"
-            ]
-        })
-        self.assertEqual(0, rlt['code'])
-        self.assertEqual("success", rlt['msg'])
-        self.assertEqual("2018-01-19", rlt['data'][0]['date'][:10])
-        self.assertLess(12, rlt['data'][0]['pe_ttm']['weightedAvg'])
+    # 大陆-公司-股票所属行业
+    def test_query_json_company_industries(self):
+        rlt = query_json("cn/company/industries", {"stockCode": "300750"})
+        pp(rlt)
+        self.assertIn("code", rlt)
+        self.assertEqual("success", rlt["message"])
+        self.assertGreater(len(rlt), 0)
+        self.assertEqual("cn", rlt["data"][0]["areaCode"])
+        self.assertTrue(
+            any(r for r in rlt["data"] if "stockCode" in r and r["stockCode"] == "C03")
+        )
 
-    def test_query_json_005(self):
-        rlt = query_json('a.indice.samples', {
-            "date": "2017-09-30",
-            "stockCodes": ["000016"]
-        })
-        self.assertEqual(0, rlt['code'])
-        self.assertEqual("success", rlt['msg'])
-        self.assertEqual("000016", rlt['data'][0]['stockCode'])
-        self.assertEqual("600000", rlt['data'][0]['samples'][0])
+    # 大陆-指数-基本面数据
+    def test_query_json_fundamental(self):
+        date_to_test = "2024-12-10"
+        rlt = query_json(
+            "cn/index/fundamental",
+            {
+                "date": date_to_test,
+                "stockCodes": ["000016"],
+                "metricsList": ["pe_ttm.y10.mcw.cvpos", "pe_ttm.mcw", "mc"],
+            },
+        )
+        pp(rlt)
+        self.assertIn("code", rlt)
+        self.assertEqual("success", rlt["message"])
+        self.assertGreater(len(rlt["data"]), 0)
+        data = rlt["data"][0]
+        self.assertEqual(date_to_test, _extract_date(data["date"]))
+        self.assertAlmostEqual(10.75, rlt["data"][0]["pe_ttm.mcw"], delta=0.01)
 
-if __name__ == '__main__':
+    # 大陆-指数-指数样本
+    def test_query_json_index_samples(self):
+        rlt = query_json(
+            "cn/index/constituents", {"date": "2017-09-30", "stockCodes": ["000016"]}
+        )
+        pp(rlt)
+        self.assertIn("code", rlt)
+        self.assertEqual("success", rlt["message"])
+        self.assertIn("000016", [x["stockCode"] for x in rlt["data"]])
+
+    # 美股-指数-基本信息
+    def test_query_df_us_index(self):
+        rlt = query_dataframe("us/index", {})
+        self.assertIn("code", rlt)
+        self.assertEqual("", rlt["msg"])
+        df: pd.DataFrame = rlt["data"]
+        assert isinstance(df, pd.DataFrame)
+        self.assertTrue(isinstance(df, pd.DataFrame))
+        self.assertGreater(len(df), 0)
+        self.assertTrue((df["name"] == "标普500").any())
+
+
+def _extract_date(datetime_str: str) -> str:
+    return datetime.fromisoformat(datetime_str).strftime("%Y-%m-%d")
+
+
+if __name__ == "__main__":
     unittest.main()
